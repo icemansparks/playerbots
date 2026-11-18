@@ -31,6 +31,7 @@
 #include "Maps/InstanceData.h"
 #include "ChatHelper.h"
 #include "strategy/values/BudgetValues.h"
+#include "strategy/values/MountValues.h"
 #include "Social/SocialMgr.h"
 #include "PlayerbotTextMgr.h"
 #include "RandomItemMgr.h"
@@ -425,7 +426,11 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         // normal landing
         if (!fallAfterJump)
         {
+#ifdef MANGOSBOT_ZERO
             bot->m_movementInfo.AddMovementFlag(MOVEFLAG_FALLINGFAR);
+#else
+            bot->m_movementInfo.AddMovementFlag(MOVEFLAG_PENDINGSTOP);
+#endif
 
             WorldPacket stop(MSG_MOVE_STOP);
 #ifdef MANGOSBOT_TWO
@@ -608,7 +613,13 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 #endif
 
     // Only update the internal ai when no reaction is running and the internal ai can be updated
-    if(!UpdateAIReaction(elapsed, doMinimalReaction, bot->IsTaxiFlying()) && CanUpdateAIInternal())
+    bool reactionRunning = UpdateAIReaction(elapsed, doMinimalReaction, bot->IsTaxiFlying());
+
+    if (Group const* group = bot->GetGroup();
+        group && !reactionRunning && !inCombat && !isWaiting && TryMountWithGroupMaster(*group))
+        return;
+
+    if (!reactionRunning && CanUpdateAIInternal())
     {
         // Update the delay with the spell cast time
         Spell* currentSpell = bot->GetCurrentSpell(CURRENT_GENERIC_SPELL);
@@ -635,6 +646,25 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
 
         YieldAIInternalThread(min);
     }
+}
+
+bool PlayerbotAI::TryMountWithGroupMaster(Group const& group)
+{
+    ObjectGuid const leaderGuid = group.GetLeaderGuid();
+    if (!leaderGuid || leaderGuid == bot->GetObjectGuid() || group.IsBattleGroup() ||
+        !bot->IsInWorld() || !bot->IsAlive() || bot->IsMounted() || bot->IsBeingTeleported() ||
+        bot->GetTransport() || bot->GetSession()->isLogingOut() ||
+        bot->IsNonMeleeSpellCasted(false, false, true))
+        return false;
+
+    Player* leader = master && master->GetObjectGuid() == leaderGuid ? master : bot->GetMap()->GetPlayer(leaderGuid);
+    if (!IsSafe(leader) || !leader->IsInWorld() || !MountValue::IsMountCast(leader->GetCurrentSpell(CURRENT_GENERIC_SPELL)))
+        return false;
+
+    if (!HasStrategy("follow", BotState::BOT_STATE_NON_COMBAT) && !HasStrategy("wander", BotState::BOT_STATE_NON_COMBAT))
+        return false;
+
+    return DoSpecificAction("check mount state", Event("group master mount cast"), true);
 }
 
 bool PlayerbotAI::UpdateAIReaction(uint32 elapsed, bool minimal, bool isStunned)
@@ -1704,6 +1734,15 @@ void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fr
     if (filtered.empty())
         return;
 
+    if (!sPlayerbotAIConfig.commandSeparator.empty() && filtered.find(sPlayerbotAIConfig.commandSeparator) != std::string::npos)
+    {
+        std::vector<std::string> commands;
+        split(commands, filtered, sPlayerbotAIConfig.commandSeparator.c_str());
+        for (const std::string& command : commands)
+            HandleCommand(type, sPlayerbotAIConfig.commandPrefix + command, fromPlayer);
+        return;
+    }
+
     if (filtered.substr(0, 6) == "debug ")
     {
         std::string response = HandleRemoteCommand(filtered.substr(6));
@@ -1966,6 +2005,9 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
             }
 #endif
 
+            if (message.empty())
+                return;
+
             bool isAiChat = sPlayerbotAIConfig.llmEnabled > 0 && (HasStrategy("ai chat", BotState::BOT_STATE_NON_COMBAT) || sPlayerbotAIConfig.llmEnabled == 3);
 
             if (m_recordIncommingMessages)
@@ -2101,7 +2143,6 @@ void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
                     }
                 }
 
-                MANGOS_ASSERT(!message.empty());     
                 QueueChatResponse(msgtype, guid1, ObjectGuid(), message, chanName, name, isAiChat);
                 GetAiObjectContext()->GetValue<time_t>("last said", "chat")->Set(time(0) + urand(5, 25));
 
@@ -2312,6 +2353,7 @@ void PlayerbotAI::ChangeEngine(BotState type)
                 out << t->GetName();
             out << ",";
             WorldPosition(bot).printWKT(out);
+            out << sPlayerbotAIConfig.LocationColumns(bot);
 
             sPlayerbotAIConfig.log("bot_states.csv", out.str().c_str());
         }
@@ -2386,12 +2428,25 @@ void PlayerbotAI::DoNextAction(bool min)
 
     Group *group = bot->GetGroup();
 
+    if (tickResetStrategiesPending && time(NULL) - lastTickResetStrategies >= 2)
+    {
+        lastTickResetStrategies = time(NULL);
+        tickResetStrategiesPending = false;
+        ResetStrategies();
+    }
+
     //Remove bot masters not in our group.
     if (master && master != bot && !HasActivePlayerMaster() && (!group || group->GetLeaderGuid() != master->GetObjectGuid()))
     {
         master = IsRealPlayer() ? bot : nullptr;
         SetMaster(master);
-        ResetStrategies();
+        if (time(NULL) - lastTickResetStrategies >= 2)
+        {
+            lastTickResetStrategies = time(NULL);
+            ResetStrategies();
+        }
+        else
+            tickResetStrategiesPending = true;
     }
 
     // test BG master set
@@ -2486,7 +2541,13 @@ void PlayerbotAI::DoNextAction(bool min)
         {
             master = newMaster;
             SetMaster(newMaster);
-            ResetStrategies();
+            if (time(NULL) - lastTickResetStrategies >= 2)
+            {
+                lastTickResetStrategies = time(NULL);
+                ResetStrategies();
+            }
+            else
+                tickResetStrategiesPending = true;
 
             if (sRandomPlayerbotMgr.IsFreeBot(bot))
             {
@@ -2507,11 +2568,17 @@ void PlayerbotAI::DoNextAction(bool min)
 
     // fix bots in BG not having proper strategies
 #ifdef MANGOSBOT_ZERO
-    if (bot->InBattleGround() && !HasStrategy("battleground", BotState::BOT_STATE_NON_COMBAT))
+    if (bot->InBattleGround() && !HasStrategy("battleground", BotState::BOT_STATE_NON_COMBAT) && time(NULL) - lastTickResetStrategies >= 2)
+    {
+        lastTickResetStrategies = time(NULL);
         ResetStrategies();
+    }
 #else
-    if ((bot->InBattleGround() && (!bot->IsBeingTeleported() && !bot->InArena()) && !HasStrategy("battleground", BotState::BOT_STATE_NON_COMBAT)) || ((!bot->IsBeingTeleported()&&bot->InArena()) && !HasStrategy("arena", BotState::BOT_STATE_NON_COMBAT)))
+    if (((bot->InBattleGround() && (!bot->IsBeingTeleported() && !bot->InArena()) && !HasStrategy("battleground", BotState::BOT_STATE_NON_COMBAT)) || ((!bot->IsBeingTeleported()&&bot->InArena()) && !HasStrategy("arena", BotState::BOT_STATE_NON_COMBAT))) && time(NULL) - lastTickResetStrategies >= 2)
+    {
+        lastTickResetStrategies = time(NULL);
         ResetStrategies();
+    }
 #endif
 
     if (master && master->IsInWorld())
@@ -2540,10 +2607,6 @@ void PlayerbotAI::DoNextAction(bool min)
     {
         if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_FLYING))
             bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_FLYING);
-#ifdef MANGOSBOT_ONE
-        if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_FLYING2))
-            bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_FLYING2);
-#endif
         if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_CAN_FLY))
             bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_CAN_FLY);
         if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_LEVITATING))
@@ -2584,6 +2647,44 @@ void PlayerbotAI::ChangeStrategy(const std::string& names, BotState type)
             engine->ChangeStrategy(names);
         }
     }
+}
+
+void PlayerbotAI::SaveCombatOrders(bool preserveExisting)
+{
+    if (preserveExisting && hasSavedCombatOrders)
+        return;
+
+    savedCombatOrders.clear();
+    const std::vector<std::string> orderStrategies = { "tank", "heal", "dps assist", "offheal", "passive" };
+    for (const std::string& strategy : orderStrategies)
+    {
+        if (HasStrategy(strategy, BotState::BOT_STATE_COMBAT))
+            savedCombatOrders.push_back(strategy);
+    }
+    savedCombatOrderDelay = aiObjectContext->GetValue<uint8>("wait for attack time")->Get();
+    savedCombatOrderTarget = aiObjectContext->GetValue<std::string>("combat order target")->Get();
+    const std::string resistOrder = aiObjectContext->GetValue<std::string>("resist order")->Get();
+    savedResistOrder = resistOrder.substr(0, resistOrder.find(':'));
+    hasSavedCombatOrders = true;
+}
+
+bool PlayerbotAI::RestoreCombatOrders()
+{
+    if (!hasSavedCombatOrders)
+        return false;
+
+    ChangeStrategy("-tank,-heal,-dps assist,-offheal,-passive", BotState::BOT_STATE_COMBAT);
+    for (const std::string& strategy : savedCombatOrders)
+        ChangeStrategy("+" + strategy, BotState::BOT_STATE_COMBAT);
+    aiObjectContext->GetValue<uint8>("wait for attack time")->Set(savedCombatOrderDelay);
+    aiObjectContext->GetValue<std::string>("combat order target")->Set(savedCombatOrderTarget);
+    hasSavedCombatOrders = false;
+
+    const std::string resistOrder = aiObjectContext->GetValue<std::string>("resist order")->Get();
+    if (resistOrder.substr(0, resistOrder.find(':')) != savedResistOrder)
+        DoSpecificAction("resist", Event("co restore", savedResistOrder.empty() ? "none" : savedResistOrder, GetMaster()), true);
+
+    return true;
 }
 
 void PlayerbotAI::PrintStrategies(Player* requester, BotState type)
@@ -3233,6 +3334,9 @@ std::vector<std::pair<const Quest*, uint32>> PlayerbotAI::GetCurrentQuestsRequir
 
         QuestStatus status = bot->GetQuestStatus(questId);
         const Quest* quest = sObjectMgr.GetQuestTemplate(questId);
+        if (!quest)
+            continue;
+
         for (uint8 i = 0; i < std::size(quest->ReqItemId); ++i)
         {
             if (quest->ReqItemId[i] == itemId)
@@ -4898,7 +5002,9 @@ bool PlayerbotAI::CastSpell(uint32 spellId, Unit* target, Item* itemTarget, bool
 	//bot->clearUnitState(UNIT_STAT_FOLLOW);
 
 	bool failWithDelay = false;
-    if (!bot->IsStandState())
+    // Respect native seated-casting permissions for eating and drinking.
+    SpellEntry const* sitCheckInfo = sServerFacade.LookupSpellInfo(spellId);
+    if (!bot->IsStandState() && !(sitCheckInfo && sitCheckInfo->HasAttribute(SPELL_ATTR_ALLOW_WHILE_SITTING)))
     {
         bot->SetStandState(UNIT_STAND_STATE_STAND);
         failWithDelay = true;
@@ -7145,6 +7251,7 @@ float PlayerbotAI::GetRange(std::string type)
     if (type == "heal") return sPlayerbotAIConfig.healDistance;
     if (type == "follow") return sPlayerbotAIConfig.followDistance;
     if (type == "guard") return sPlayerbotAIConfig.sightDistance;
+    if (type == "loot") return sPlayerbotAIConfig.lootDistance;
     if (type == "followraid") return sPlayerbotAIConfig.raidFollowDistance;
     if (type == "wandermin") return sPlayerbotAIConfig.wanderMinDistance;
     if (type == "wandermax") return sPlayerbotAIConfig.wanderMaxDistance;
@@ -8639,8 +8746,14 @@ void PlayerbotAI::EnchantItemT(uint32 spellid, uint8 slot, Item* item)
       return;
    }
 
-   if (!((1 << pItem->GetProto()->SubClass) & spellInfo->EquippedItemSubClassMask) &&
-      !((1 << pItem->GetProto()->InventoryType) & spellInfo->EquippedItemInventoryTypeMask))
+   // Every restriction the spell sets must match, not just one of them: a ring
+   // otherwise passes on the sub class bit alone and gets a chest enchant.
+   if ((spellInfo->EquippedItemClass >= 0 &&
+        uint32(spellInfo->EquippedItemClass) != pItem->GetProto()->Class) ||
+       (spellInfo->EquippedItemSubClassMask &&
+        !((uint32(1) << pItem->GetProto()->SubClass) & uint32(spellInfo->EquippedItemSubClassMask))) ||
+       (spellInfo->EquippedItemInventoryTypeMask &&
+        !((uint32(1) << pItem->GetProto()->InventoryType) & uint32(spellInfo->EquippedItemInventoryTypeMask))))
    {
 
       sLog.outError("%s: items could not be enchanted, wrong item type equipped", bot->GetName());
@@ -8744,21 +8857,10 @@ bool PlayerbotAI::CanMove()
     {
         return false;
     }
-#ifdef MANGOSBOT_ONE
     if (bot->IsFalling())
     {
         return false;
     }
-    if (bot->IsJumping())
-    {
-        return false;
-    }
-#else
-    if (bot->IsFalling())
-    {
-        return false;
-    }
-#endif
 
     MotionMaster& mm = *bot->GetMotionMaster();
     MovementGeneratorType currentMotion = mm.GetCurrentMovementGeneratorType();
@@ -8806,11 +8908,24 @@ void PlayerbotAI::StopMoving()
     }
     
     bot->InterruptMoving(true);
+
+    Position pos = bot->GetPosition();
+
+    bool airborne = bot->IsFlying() || bot->IsFreeFlying() || IsJumping() || bot->IsFalling() ||
+        bot->m_movementInfo.HasMovementFlag(MOVEFLAG_FALLINGFAR) ||
+        bot->m_movementInfo.HasMovementFlag(MOVEFLAG_HOVER) ||
+        bot->m_movementInfo.HasMovementFlag(MOVEFLAG_LEVITATING);
+
+    if (!bot->GetTransport() && !airborne && !bot->IsInWater() && !sServerFacade.IsUnderwater(bot))
+    {
+        float groundZ = pos.z;
+        bot->UpdateAllowedPositionZ(pos.x, pos.y, pos.z);
+        if (fabs(pos.z - groundZ) > 0.1f)
+            bot->Relocate(pos.x, pos.y, pos.z, pos.o);
+    }
+
     MovementInfo mInfo = bot->m_movementInfo;
-    float x, y, z;
-    bot->GetPosition(x, y, z);
-    float o = bot->GetPosition().o;
-    mInfo.ChangePosition(x, y, z, o);
+    mInfo.ChangePosition(pos.x, pos.y, pos.z, pos.o);
     WorldPacket data(MSG_MOVE_STOP);
 #ifdef MANGOSBOT_TWO
     data << bot->GetObjectGuid().WriteAsPacked();

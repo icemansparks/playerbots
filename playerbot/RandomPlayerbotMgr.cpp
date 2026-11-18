@@ -35,6 +35,7 @@
 
 #ifdef GenerateBotTests
 #include "strategy/tests/TestRegistry.h"
+#include "strategy/tests/TravelProbe.h"
 #endif
 #include "Chat/ChannelMgr.h"
 #include "Guilds/GuildMgr.h"
@@ -400,8 +401,98 @@ inline void print_path(Unit* bot, std::vector<std::pair<int, int>>& log)
         print_line(bot, line, false); //Print remaining path.
 }
 
+namespace
+{
+    struct LiveMapSample
+    {
+        uint32 mapId = 0;
+        float x = 0.0f;
+        float y = 0.0f;
+        uint32 flags = 0;
+        uint32 level = 0;
+        time_t written = 0;
+    };
+
+    std::unordered_map<uint32, LiveMapSample> liveMapSamples;
+    time_t liveMapLastSample = 0;
+
+    void AppendLiveMapRow(std::string& buffer, std::unordered_set<uint32>& seen, Player* bot, const std::string& timestamp, time_t now)
+    {
+        if (!bot || !bot->IsInWorld() || bot->IsBeingTeleported())
+            return;
+
+        if (!seen.insert(bot->GetObjectGuid().GetCounter()).second)
+            return;
+
+        PlayerbotAI* ai = bot->GetPlayerbotAI();
+        bool isBot = ai && !ai->IsRealPlayer();
+        uint32 flags = 0;
+        if (bot->IsInCombat()) flags |= 1;
+        if (bot->IsDead()) flags |= bot->GetCorpse() ? 4 : 2;
+        if (bot->GetGroup()) flags |= 8;
+        if (ai && ai->AllowActivity(ALL_ACTIVITY)) flags |= 16;
+        if (ai && !ai->IsActive()) flags |= 32;
+        if (bot->IsTaxiFlying()) flags |= 64;
+        if (ai && ai->GetAiObjectContext()->GetValue<bool>("manual bool", "is running test")->Get()) flags |= 128;
+
+        uint32 guid = bot->GetObjectGuid().GetCounter();
+        LiveMapSample& last = liveMapSamples[guid];
+        float dx = bot->GetPositionX() - last.x;
+        float dy = bot->GetPositionY() - last.y;
+        bool changed = last.written == 0 || last.mapId != bot->GetMapId() || last.flags != flags || last.level != bot->GetLevel() || dx * dx + dy * dy > 4.0f;
+        if (!changed && now - last.written < 60)
+            return;
+
+        last.mapId = bot->GetMapId();
+        last.x = bot->GetPositionX();
+        last.y = bot->GetPositionY();
+        last.flags = flags;
+        last.level = bot->GetLevel();
+        last.written = now;
+
+        uint32 zoneId = 0, areaId = 0;
+        bot->GetZoneAndAreaId(zoneId, areaId);
+
+        std::ostringstream out;
+        out << timestamp << "+00," << now << "," << guid << "," << bot->GetName() << "," << (isBot ? 1 : 0) << ",";
+        out << sPlayerbotAIConfig.LocationColumns(bot, true) << ",";
+        out << std::fixed << std::setprecision(2) << bot->GetOrientation() << ",";
+        out << zoneId << "," << areaId << "," << bot->GetLevel() << ",";
+        out << std::setprecision(0) << bot->GetHealthPercent() << "," << bot->GetPowerPercent() << ",";
+        out << flags << ",";
+        out << (bot->GetGroup() ? bot->GetGroup()->GetLeaderGuid().GetCounter() : 0) << ",";
+        out << bot->GetMoney() << "\n";
+        buffer += out.str();
+    }
+}
+
+void RandomPlayerbotMgr::LogLiveMapPositions()
+{
+    if (!sPlayerbotAIConfig.hasLog("bot_positions.csv"))
+        return;
+
+    time_t now = time(nullptr);
+    if (now - liveMapLastSample < (time_t)sPlayerbotAIConfig.liveMapSampleSec)
+        return;
+    liveMapLastSample = now;
+
+    std::string timestamp = sPlayerbotAIConfig.GetTimestampStr();
+    std::string buffer;
+    std::unordered_set<uint32> seen;
+
+    if (sPlayerbotAIConfig.randomBotAutologin)
+        ForEachPlayerbot([&](Player* bot) { AppendLiveMapRow(buffer, seen, bot, timestamp, now); });
+
+    for (auto i : GetPlayers())
+        AppendLiveMapRow(buffer, seen, i.second, timestamp, now);
+
+    sPlayerbotAIConfig.logRaw("bot_positions.csv", buffer);
+}
+
 void RandomPlayerbotMgr::LogPlayerLocation()
 {
+    LogLiveMapPositions();
+
     botCount = 0;
     activeBots = 0;
     if (sPlayerbotAIConfig.randomBotAutologin)
@@ -550,6 +641,7 @@ void RandomPlayerbotMgr::LogPlayerLocation()
                         hb << bot->GetPowerPercent() << ",";
                         hb << (bot->IsInCombat() ? "combat" : "non-combat") << ",";
                         WorldPosition(bot).printWKT(hb);
+                        hb << sPlayerbotAIConfig.LocationColumns(bot, true);
 
                         sPlayerbotAIConfig.log("bot_heartbeat.csv", hb.str().c_str());
                     }
@@ -677,6 +769,9 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
 #endif
 
     if (!sPlayerbotAIConfig.randomBotAutologin || !sPlayerbotAIConfig.enabled)
+        return;
+
+    if (sPlayerbotAIConfig.IsPartyBotOnly())
         return;
 
 #ifdef GenerateBotTests
@@ -3486,6 +3581,10 @@ bool RandomPlayerbotMgr::HandlePlayerbotConsoleCommand(ChatHandler* handler, cha
     handlers["login debug"] = &RandomPlayerbotMgr::HandleConsoleLoginDebug;
     handlers["taxtest"] = &RandomPlayerbotMgr::HandleConsoleTaxTest;
     handlers["zoneupd"] = &RandomPlayerbotMgr::HandleConsoleZoneUpd;
+#ifdef GenerateBotTests
+    handlers["travelsample"] = &RandomPlayerbotMgr::HandleConsoleTravelSample;
+    handlers["traveltrace"] = &RandomPlayerbotMgr::HandleConsoleTravelTrace;
+#endif
 
     for (auto& [prefix, consoleHandler] : handlers)
     {
@@ -4376,6 +4475,36 @@ std::list<std::string> RandomPlayerbotMgr::HandleConsoleTaxTest(std::string para
     messages.push_back(std::string("taxtest ") + bot->GetName() + ": " + (ok ? "taxi started" : "ActivateTaxiPathTo FAILED"));
     return messages;
 }
+
+#ifdef GenerateBotTests
+std::list<std::string> RandomPlayerbotMgr::HandleConsoleTravelSample(std::string param)
+{
+    std::list<std::string> messages;
+
+    std::vector<std::string> parts = Qualified::getMultiQualifiers(param, " ");
+    if (parts.empty())
+    {
+        messages.push_back("usage: travelsample <bot> <levels> <purposes> [runs]");
+        return messages;
+    }
+
+    Player* bot = sObjectAccessor.FindPlayerByName(parts[0].c_str());
+    if (!bot || !bot->GetPlayerbotAI())
+    {
+        messages.push_back("travelsample: bot not found: " + parts[0]);
+        return messages;
+    }
+
+    size_t nameLen = parts[0].size();
+    std::string rest = param.size() > nameLen + 1 ? param.substr(nameLen + 1) : "";
+    return TravelProbe::HandleTravelSample(bot, rest);
+}
+
+std::list<std::string> RandomPlayerbotMgr::HandleConsoleTravelTrace(std::string param)
+{
+    return TravelProbe::HandleTravelTrace(param);
+}
+#endif
 
 std::list<std::string> RandomPlayerbotMgr::HandleConsoleZoneUpd(std::string param)
 {
@@ -5458,7 +5587,7 @@ uint32 RandomPlayerbotMgr::GetOrCreateAccount(Player* master, std::string& error
     }
 
     Field* fields = accountNrQr->Fetch();
-    uint32 accountNumber = sPlayerbotAIConfig.randomBotAccountCount;
+    uint32 accountNumber = 0;
     uint32 maxAccountNum = fields[0].GetUInt32();
 
     for (uint32 i = 0; i < 10000; i++)
