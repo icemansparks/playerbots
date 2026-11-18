@@ -354,11 +354,11 @@ void WarlockCcStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 
     triggers.push_back(new TriggerNode(
         "banish",
-        NextAction::array(0, new NextAction("banish on cc", ACTION_EMERGENCY + 2), NULL)));
+        NextAction::array(0, new NextAction("banish on cc", ACTION_INTERRUPT + 2), NULL)));
 
     triggers.push_back(new TriggerNode(
         "fear",
-        NextAction::array(0, new NextAction("fear on cc", ACTION_EMERGENCY + 1), NULL)));
+        NextAction::array(0, new NextAction("fear on cc",  ACTION_INTERRUPT + 1), NULL)));
 
     triggers.push_back(new TriggerNode(
         "enemy ten yards",
@@ -411,7 +411,9 @@ void WarlockPetStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 
 void WarlockPetStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
 {
-
+    triggers.push_back(new TriggerNode(
+        "new pet",
+        NextAction::array(0, new NextAction("pet autocast", ACTION_NORMAL + 3), NULL)));
 }
 
 void WarlockPetPvpStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -818,11 +820,11 @@ void WarlockCcStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 
     triggers.push_back(new TriggerNode(
         "banish",
-        NextAction::array(0, new NextAction("banish on cc", ACTION_EMERGENCY + 2), NULL)));
+        NextAction::array(0, new NextAction("banish on cc", ACTION_INTERRUPT + 2), NULL)));
 
     triggers.push_back(new TriggerNode(
         "fear",
-        NextAction::array(0, new NextAction("fear on cc", ACTION_EMERGENCY + 1), NULL)));
+        NextAction::array(0, new NextAction("fear on cc",  ACTION_INTERRUPT + 1), NULL)));
 
     triggers.push_back(new TriggerNode(
         "enemy ten yards",
@@ -875,6 +877,9 @@ void WarlockPetStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 
 void WarlockPetStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
 {
+    triggers.push_back(new TriggerNode(
+        "new pet",
+        NextAction::array(0, new NextAction("pet autocast", ACTION_NORMAL + 3), NULL)));
     triggers.push_back(new TriggerNode(
         "often",
         NextAction::array(0, new NextAction("initialize pet", ACTION_NORMAL), NULL)));
@@ -1284,11 +1289,11 @@ void WarlockCcStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 
     triggers.push_back(new TriggerNode(
         "banish",
-        NextAction::array(0, new NextAction("banish on cc", ACTION_EMERGENCY + 2), NULL)));
+        NextAction::array(0, new NextAction("banish on cc", ACTION_INTERRUPT + 2), NULL)));
 
     triggers.push_back(new TriggerNode(
         "fear",
-        NextAction::array(0, new NextAction("fear on cc", ACTION_EMERGENCY + 1), NULL)));
+        NextAction::array(0, new NextAction("fear on cc",  ACTION_INTERRUPT + 1), NULL)));
 
     triggers.push_back(new TriggerNode(
         "enemy ten yards",
@@ -1341,7 +1346,9 @@ void WarlockPetStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 
 void WarlockPetStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
 {
-
+    triggers.push_back(new TriggerNode(
+        "new pet",
+        NextAction::array(0, new NextAction("pet autocast", ACTION_NORMAL + 3), NULL)));
 }
 
 void WarlockPetPvpStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
@@ -1421,6 +1428,12 @@ void WarlockCursesRaidStrategy::InitCombatTriggers(std::list<TriggerNode*>& trig
 
 void WarlockManualPetStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
 {
+    // Needed here too: with a manual pet strategy set, the situation pet strategy's "new pet" trigger
+    // was not checked in testing.
+    triggers.push_back(new TriggerNode(
+        "new pet",
+        NextAction::array(0, new NextAction("pet autocast", ACTION_NORMAL + 3), NULL)));
+
     triggers.push_back(new TriggerNode(
         triggerName,
         NextAction::array(0, new NextAction(actionName, ACTION_HIGH), NULL)));

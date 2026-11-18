@@ -6,7 +6,11 @@
 #include "playerbot/strategy/values/TravelValues.h"
 #include "playerbot/strategy/values/SharedValueContext.h"
 #include "playerbot/strategy/values/GuildValues.h"
+#include "playerbot/strategy/values/QuestValues.h"
 #include "playerbot/strategy/values/FreeMoveValues.h"
+#ifdef GenerateBotTests
+#include "playerbot/strategy/tests/TravelProbe.h"
+#endif
 #include "Guilds/GuildMgr.h"
 #include <iomanip>
 
@@ -43,10 +47,28 @@ bool ChooseTravelTargetAction::Execute(Event& event)
         return false;
     }
 
-    if (futureDestinations->wait_for(std::chrono::seconds(0)) == std::future_status::timeout)
+    if (futureDestinations->wait_for(std::chrono::seconds(0)) != std::future_status::ready)
         return false;
 
-    PartitionedTravelList destinationList = futureDestinations->get();
+    PartitionedTravelList destinationList;
+    try
+    {
+        destinationList = futureDestinations->get();
+    }
+    catch (const std::exception& error)
+    {
+        sLog.outError("Playerbot travel search failed: %s", error.what());
+        travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_NONE);
+        context->ClearValues("no active travel destinations");
+        return false;
+    }
+    catch (...)
+    {
+        sLog.outError("Playerbot travel search failed: unknown exception");
+        travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_NONE);
+        context->ClearValues("no active travel destinations");
+        return false;
+    }
 
     travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_NONE);
 
@@ -160,6 +182,10 @@ void ChooseTravelTargetAction::setNewTarget(Player* requester, TravelTarget* new
 //This should at some point be rewritten to be denser or perhaps logic moved to ->getTitle()
 void ChooseTravelTargetAction::ReportTravelTarget(Player* bot, Player* requester, TravelTarget* newTarget, TravelTarget* oldTarget)
 {
+#ifdef GenerateBotTests
+    TravelProbe::ReportFlip(bot, newTarget, oldTarget);
+#endif
+
     PlayerbotAI* ai = bot->GetPlayerbotAI();
     AiObjectContext* context = ai->GetAiObjectContext();
 
@@ -317,18 +343,30 @@ inline std::string PrintPartion(uint32 sqPartition)
 //Sets the target to the best destination.
 bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* target, PartitionedTravelList& partitionedList, bool onlyActive)
 {
+    TravelPoint picked = PickBestTarget(bot, requester, ai, target->IsForced(), PlayerTravelInfo(bot), partitionedList);
+
+    if (!std::get<0>(picked))
+        return false;
+
+    target->SetTarget(std::get<0>(picked), std::get<1>(picked));
+
+    ai->TellDebug(requester, "Point at " + std::to_string(uint32(target->Distance(bot))) + "y selected.", "debug travel");
+
+    return true;
+}
+
+TravelPoint ChooseTravelTargetAction::PickBestTarget(Player* bot, Player* requester, PlayerbotAI* botAi, bool forced, const PlayerTravelInfo& info, PartitionedTravelList& partitionedList)
+{
     bool distanceCheck = true;
     std::unordered_map<TravelDestination*, bool> isActive;
 
-    bool hasTarget = false;
-
     for (auto& [partition, travelPointList] : partitionedList)
     {
-        ai->TellDebug(requester, "Found " + std::to_string(travelPointList.size()) + " points at range " + PrintPartion(partition), "debug travel");
+        botAi->TellDebug(requester, "Found " + std::to_string(travelPointList.size()) + " points at range " + PrintPartion(partition), "debug travel");
 
         for (auto& [destination, position, distance] : travelPointList)
         {
-            if (!target->IsForced() && isActive.find(destination) != isActive.end() && !isActive[destination])
+            if (!forced && isActive.find(destination) != isActive.end() && !isActive[destination])
                 continue;
 
             if (distanceCheck) //Check if we have moved significantly after getting the destinations.
@@ -336,18 +374,18 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 WorldPosition center(requester ? requester : bot);
                 if (position->distance(center) > distance * 2 && position->distance(center) > 100)
                 {
-                    ai->TellDebug(requester, "We had some destinations but we moved too far since. Trying to get a new list.", "debug travel");
-                    return false;
+                    botAi->TellDebug(requester, "We had some destinations but we moved too far since. Trying to get a new list.", "debug travel");
+                    return {};
                 }
 
                 distanceCheck = false;
             }
 
-            if (target->IsForced() || (isActive[destination] = destination->IsActive(bot, PlayerTravelInfo(bot))))
+            if (forced || (isActive[destination] = destination->IsActive(bot, info)))
             {
                 if (partition != std::prev(partitionedList.end())->first && !urand(0, 10)) //10% chance to skip to a longer partition.
                 {
-                    ai->TellDebug(requester, "Skipping range " + PrintPartion(partition), "debug travel");
+                    botAi->TellDebug(requester, "Skipping range " + PrintPartion(partition), "debug travel");
                     break;
                 }
 
@@ -356,31 +394,23 @@ bool ChooseTravelTargetAction::SetBestTarget(Player* requester, TravelTarget* ta
                 {
                     if (!bot->InSamePhase(guidP->GetPhaseMask()))
                     {
-                        ai->TellDebug(requester, "Not same phase: " + destination->GetTitle() + " " + std::to_string(round(destination->DistanceTo(bot))) + "y", "debug travel");
+                        botAi->TellDebug(requester, "Not same phase: " + destination->GetTitle() + " " + std::to_string(round(destination->DistanceTo(bot))) + "y", "debug travel");
                         continue;
                     }
                 }
 #endif
 
-                target->SetTarget(destination, position);
-                hasTarget = true;
-                break;
+                return { destination, position, distance };
             }
             else
             {
-                ai->TellDebug(requester, "Not active: " + destination->GetTitle() + " " + std::to_string((uint32)round(destination->DistanceTo(bot))) + "y", "debug travel");
+                botAi->TellDebug(requester, "Not active: " + destination->GetTitle() + " " + std::to_string((uint32)round(destination->DistanceTo(bot))) + "y", "debug travel");
             }
 
         }
+    }
 
-        if (hasTarget)
-            break;
-    }         
-     
-    if(hasTarget)
-        ai->TellDebug(requester, "Point at " + std::to_string(uint32(target->Distance(bot))) + "y selected.", "debug travel");
-
-    return hasTarget;
+    return {};
 }
 
 std::vector<std::string> split(const std::string& s, char delim);
@@ -747,6 +777,25 @@ bool RequestTravelTargetAction::isUseful() {
     {
         ai->TellDebug(ai->GetMaster(), "Skipped " + GetTravelPurposeName(qualifier) + " because of skip chance", "debug travel");
         return false;
+    }
+
+    if (Qualified::isValidNumberString(getQualifier()))
+    {
+        TravelDestinationPurpose purposeHint = TravelDestinationPurpose(stoi(getQualifier()));
+
+        if (purposeHint == TravelDestinationPurpose::Repair || purposeHint == TravelDestinationPurpose::Vendor ||
+            purposeHint == TravelDestinationPurpose::AH || purposeHint == TravelDestinationPurpose::Mail)
+        {
+            bool urgent = (purposeHint == TravelDestinationPurpose::Repair && AI_VALUE(bool, "should repair")) ||
+                ((purposeHint == TravelDestinationPurpose::Vendor || purposeHint == TravelDestinationPurpose::AH) && AI_VALUE(uint8, "bag space") > 90);
+
+            if (!urgent && NeedQuestObjectiveValue::HasIncompleteObjective(ai) &&
+                sTravelMgr.GetDestinations(PlayerTravelInfo(bot), (uint32)purposeHint, {}, true, sPlayerbotAIConfig.choreTravelBudget).empty())
+            {
+                ai->TellDebug(ai->GetMaster(), "Skipped " + GetTravelPurposeName(qualifier) + " (nearest destination is beyond the chore travel budget)", "debug travel");
+                return false;
+            }
+        }
     }
 
     return true;
@@ -1296,6 +1345,32 @@ bool RequestNamedTravelTargetAction::Execute(Event& event)
     SET_AI_VALUE2(int, "manual int", "future travel relevance", relevance * 100);
 
     return true;
+}
+
+bool RequestNamedTravelTargetAction::isUseful()
+{
+	if (!RequestTravelTargetAction::isUseful())
+		return false;
+
+	std::string travelName = getQualifier();
+	bool objectivePending = NeedQuestObjectiveValue::HasIncompleteObjective(ai);
+
+	if (objectivePending && (travelName == "city" || travelName == "pvp"))
+	{
+		ai->TellDebug(ai->GetMaster(), "Skipped " + GetTravelPurposeName(qualifier) + " (a quest objective still needs work)", "debug travel");
+		return false;
+	}
+
+	if (objectivePending && (travelName.find("trainer") == 0 || travelName == "mount"))
+	{
+		if (sTravelMgr.GetDestinations(PlayerTravelInfo(bot), (uint32)TravelDestinationPurpose::GenericRpg, {}, true, sPlayerbotAIConfig.choreTravelBudget).empty())
+		{
+			ai->TellDebug(ai->GetMaster(), "Skipped " + GetTravelPurposeName(qualifier) + " (no trainer or mount vendor within the chore travel budget)", "debug travel");
+			return false;
+		}
+	}
+
+	return true;
 }
 
 bool RequestNamedTravelTargetAction::isAllowed() const

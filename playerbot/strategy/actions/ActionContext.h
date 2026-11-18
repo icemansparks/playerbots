@@ -14,6 +14,7 @@
 #include "PositionAction.h"
 #include "AttackAction.h"
 #include "CheckMailAction.h"
+#include "PetAutocastAction.h"
 #include "CheckValuesAction.h"
 #include "ChooseRpgTargetAction.h"
 #include "ChooseTravelTargetAction.h"
@@ -161,6 +162,7 @@ namespace ai
             creators["return"] = [](PlayerbotAI* ai) { return new ReturnAction(ai); };
             creators["move to loot"] = [](PlayerbotAI* ai) { return new MoveToLootAction(ai); };
             creators["open loot"] = [](PlayerbotAI* ai) { return new OpenLootAction(ai); };
+            creators["fetch object"] = [](PlayerbotAI* ai) { return new FetchObjectAction(ai); };
             creators["guard"] = [](PlayerbotAI* ai) { return new GuardAction(ai); };
             creators["return to stay position"] = [](PlayerbotAI* ai) { return new ReturnToStayPositionAction(ai); };
             creators["move out of enemy contact"] = [](PlayerbotAI* ai) { return new MoveOutOfEnemyContactAction(ai); };
@@ -169,6 +171,7 @@ namespace ai
             creators["attack duel opponent"] = [](PlayerbotAI* ai) { return new AttackDuelOpponentAction(ai); };
             creators["select new target"] = [](PlayerbotAI* ai) { return new SelectNewTargetAction(ai); };
             creators["check mail"] = [](PlayerbotAI* ai) { return new CheckMailAction(ai); };
+            creators["pet autocast"] = [](PlayerbotAI* ai) { return new PetAutocastAction(ai); };
             creators["say"] = [](PlayerbotAI* ai) { return new SayAction(ai); };
             creators["reveal gathering item"] = [](PlayerbotAI* ai) { return new RevealGatheringItemAction(ai); };
             creators["outfit"] = [](PlayerbotAI* ai) { return new OutfitAction(ai); };
@@ -234,6 +237,8 @@ namespace ai
             creators["guild accept quest order"] = [](PlayerbotAI* ai) { return new GuildAcceptQuestOrderAction(ai); };
             creators["use trinket"] = [](PlayerbotAI* ai) { return new UseTrinketAction(ai); };
             creators["unstuck"] = [](PlayerbotAI* ai) { return new UnstuckAction(ai); };
+            creators["drop standoff"] = [](PlayerbotAI* ai) { return new DropStandoffAction(ai); };
+            creators["release stuck movement"] = [](PlayerbotAI* ai) { return new ReleaseStuckMovementAction(ai); };
             creators["reset"] = [](PlayerbotAI* ai) { return new ResetAction(ai); };
             creators["interrupt current spell"] = [](PlayerbotAI* ai) { return new InterruptCurrentSpellAction(ai); };
             creators["initialize pet"] = [](PlayerbotAI* ai) { return new InitializePetAction(ai); };

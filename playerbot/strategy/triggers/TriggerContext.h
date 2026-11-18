@@ -22,6 +22,7 @@
 #include "MechanarDungeonTriggers.h"
 #include "GlyphTriggers.h"
 #include "WorldBuffTravelTriggers.h"
+#include "NewPetTrigger.h"
 
 #ifdef GenerateBotTests
 #include "../tests/TestTriggers.h"
@@ -100,10 +101,10 @@ namespace ai
             creators["ranged medium aoe"] = [](PlayerbotAI* ai) { return new RangedMediumAoeTrigger(ai); };
             creators["ranged high aoe"] = [](PlayerbotAI* ai) { return new RangedHighAoeTrigger(ai); };
             creators["ranged very high aoe"] = [](PlayerbotAI* ai) { return new RangedVeryHighAoeTrigger(ai); };
-            creators["melee light aoe"] = [](PlayerbotAI* ai) { return new RangedLightAoeTrigger(ai); };
-            creators["melee medium aoe"] = [](PlayerbotAI* ai) { return new RangedMediumAoeTrigger(ai); };
-            creators["melee high aoe"] = [](PlayerbotAI* ai) { return new RangedHighAoeTrigger(ai); };
-            creators["melee very high aoe"] = [](PlayerbotAI* ai) { return new RangedVeryHighAoeTrigger(ai); };
+            creators["melee light aoe"] = [](PlayerbotAI* ai) { return new MeleeLightAoeTrigger(ai); };
+            creators["melee medium aoe"] = [](PlayerbotAI* ai) { return new MeleeMediumAoeTrigger(ai); };
+            creators["melee high aoe"] = [](PlayerbotAI* ai) { return new MeleeHighAoeTrigger(ai); };
+            creators["melee very high aoe"] = [](PlayerbotAI* ai) { return new MeleeVeryHighAoeTrigger(ai); };
 
             creators["has area debuff"] = [](PlayerbotAI* ai) { return new HasAreaDebuffTrigger(ai); };
             creators["has aura"] = [](PlayerbotAI* ai) { return new HasAuraTrigger(ai); };
@@ -132,6 +133,7 @@ namespace ai
             creators["corpse near"] = [](PlayerbotAI* ai) { return new CorpseNearTrigger(ai); };
             creators["party member dead"] = [](PlayerbotAI* ai) { return new PartyMemberDeadTrigger(ai); };
             creators["no pet"] = [](PlayerbotAI* ai) { return new NoPetTrigger(ai); };
+            creators["new pet"] = [](PlayerbotAI* ai) { return new NewPetTrigger(ai); };
             creators["has attackers"] = [](PlayerbotAI* ai) { return new HasAttackersTrigger(ai); };
             creators["no possible targets"] = [](PlayerbotAI* ai) { return new NoPossibleTargetsTrigger(ai); };
             creators["possible adds"] = [](PlayerbotAI* ai) { return new PossibleAddsTrigger(ai); };
@@ -234,6 +236,8 @@ namespace ai
             creators["move stuck"] = [](PlayerbotAI* ai) { return new MoveStuckTrigger(ai); };
             creators["move long stuck"] = [](PlayerbotAI* ai) { return new MoveLongStuckTrigger(ai); };
             creators["combat stuck"] = [](PlayerbotAI* ai) { return new CombatStuckTrigger(ai); };
+            creators["combat standoff"] = [](PlayerbotAI* ai) { return new CombatStandoffTrigger(ai); };
+            creators["movement loop stuck"] = [](PlayerbotAI* ai) { return new MovementLoopStuckTrigger(ai); };
             creators["combat long stuck"] = [](PlayerbotAI* ai) { return new CombatLongStuckTrigger(ai); };
             creators["leader is afk"] = [](PlayerbotAI* ai) { return new LeaderIsAfkTrigger(ai); };
 
