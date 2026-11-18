@@ -16,6 +16,7 @@
 #include "MasterTargetValue.h"
 #include "LineTargetValue.h"
 #include "TankTargetValue.h"
+#include "SmartTankTargetValue.h"
 #include "DpsTargetValue.h"
 #include "CcTargetValue.h"
 #include "CurrentCcTargetValue.h"
@@ -153,7 +154,7 @@ namespace ai
             creators["self target"] = [](PlayerbotAI* ai) { return new SelfTargetValue(ai); };
             creators["master target"] = [](PlayerbotAI* ai) { return new MasterTargetValue(ai); };
             creators["line target"] = [](PlayerbotAI* ai) { return new LineTargetValue(ai); };
-            creators["tank target"] = [](PlayerbotAI* ai) { return new TankTargetValue(ai); };
+            creators["tank target"] = [](PlayerbotAI* ai) { return new SmartTankTargetValue(ai); };
             creators["dps target"] = [](PlayerbotAI* ai) { return new DpsTargetValue(ai); };
             creators["dps aoe target"] = [](PlayerbotAI* ai) { return new DpsAoeTargetValue(ai); };
             creators["least hp target"] = [](PlayerbotAI* ai) { return new LeastHpTargetValue(ai); };
@@ -236,6 +237,7 @@ namespace ai
 
             creators["rti cc"] = [](PlayerbotAI* ai) { return new RtiCcValue(ai); };
             creators["rti"] = [](PlayerbotAI* ai) { return new RtiValue(ai); };
+            creators["combat order target"] = [](PlayerbotAI* ai) { return new CombatOrderTargetValue(ai); };
             creators["position"] = [](PlayerbotAI* ai) { return new PositionValue(ai); };
             creators["pos"] = [](PlayerbotAI* ai) { return new SinglePositionValue(ai); };
             creators["current position"] = [](PlayerbotAI* ai) { return new CurrentPositionValue(ai); };
@@ -283,6 +285,8 @@ namespace ai
             creators["aoe count"] = [](PlayerbotAI* ai) { return new AoeCountValue(ai); };
             creators["aoe position"] = [](PlayerbotAI* ai) { return new AoePositionValue(ai); };
             creators["outfit list"] = [](PlayerbotAI* ai) { return new OutfitListValue(ai); };
+            creators["resist order"] = [](PlayerbotAI* ai) { return new ResistOrderValue(ai); };
+            creators["resist order strategies"] = [](PlayerbotAI* ai) { return new ResistOrderValue(ai, "resist order strategies"); };
 
             creators["random bot update"] = [](PlayerbotAI* ai) { return new RandomBotUpdateValue(ai); };
             creators["nearest non bot players"] = [](PlayerbotAI* ai) { return new NearestNonBotPlayersValue(ai); };
@@ -300,6 +304,8 @@ namespace ai
             creators["ignore rpg target"] = [](PlayerbotAI* ai) { return new IgnoreRpgTargetValue(ai); };
             creators["next rpg action"] = [](PlayerbotAI* ai) { return new NextRpgActionValue(ai); };
             creators["talk target"] = [](PlayerbotAI* ai) { return new TalkTargetValue(ai); };
+            creators["fetch target"] = [](PlayerbotAI* ai) { return new FetchTargetValue(ai); };
+            creators["fetch requester"] = [](PlayerbotAI* ai) { return new FetchTargetValue(ai, "fetch requester"); };
             creators["attack target"] = [](PlayerbotAI* ai) { return new AttackTargetValue(ai); };
             creators["pull target"] = [](PlayerbotAI* ai) { return new PullTargetValue(ai); };
             creators["follow target"] = [](PlayerbotAI* ai) { return new FollowTargetValue(ai); };
@@ -391,6 +397,7 @@ namespace ai
             creators["not"] = [](PlayerbotAI* ai) { return new NotValue(ai); };
             creators["gt32"] = [](PlayerbotAI* ai) { return new GT32Value(ai); };
             creators["manual bool"] = [](PlayerbotAI* ai) { return new BoolManualSetValue(ai); };
+            creators["movement loop age"] = [](PlayerbotAI* ai) { return new IntManualSetValue(ai); };
             creators["manual int"] = [](PlayerbotAI* ai) { return new IntManualSetValue(ai); };
             creators["manual saved int"] = [](PlayerbotAI* ai) { return new IntManualSetSavedValue(ai); };
             creators["manual string"] = [](PlayerbotAI* ai) { return new StringManualSetValue(ai); };

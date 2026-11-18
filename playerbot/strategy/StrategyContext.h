@@ -68,6 +68,7 @@ namespace ai
             creators["racials"] = [](PlayerbotAI* ai) { return new RacialsStrategy(ai); };
             creators["loot"] = [](PlayerbotAI* ai) { return new LootNonCombatStrategy(ai); };
             creators["gather"] = [](PlayerbotAI* ai) { return new GatherStrategy(ai); };
+            creators["fetch"] = [](PlayerbotAI* ai) { return new FetchStrategy(ai); };
             creators["roll"] = [](PlayerbotAI* ai) { return new RollStrategy(ai); };
             creators["delayed roll"] = [](PlayerbotAI* ai) { return new DelayedRollStrategy(ai); };
             creators["emote"] = [](PlayerbotAI* ai) { return new EmoteStrategy(ai); };
@@ -114,7 +115,7 @@ namespace ai
             creators["map full"] = [](PlayerbotAI* ai) { return new MapFullStrategy(ai); };
             creators["sit"] = [](PlayerbotAI* ai) { return new SitStrategy(ai); };
             creators["mark rti"] = [](PlayerbotAI* ai) { return new MarkRtiStrategy(ai); };
-            creators["ads"] = [](PlayerbotAI* ai) { return new PossibleAdsStrategy(ai); };
+            creators["ads"] = [](PlayerbotAI* ai) { return new PossibleAddsStrategy(ai); };
             creators["close"] = [](PlayerbotAI* ai) { return new MeleeCombatStrategy(ai); };
             creators["ranged"] = [](PlayerbotAI* ai) { return new RangedCombatStrategy(ai); };
             creators["behind"] = [](PlayerbotAI* ai) { return new SetBehindCombatStrategy(ai); };

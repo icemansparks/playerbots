@@ -114,9 +114,9 @@ public:
     bool enabled;
     bool allowGuildBots;
     bool allowMultiAccountAltBots;
-    uint32 globalCoolDown, reactDelay, maxWaitForMove, expireActionTime, dispelAuraDuration, passiveDelay, repeatDelay,
+    uint32 globalCoolDown, reactDelay, maxWaitForMove, expireActionTime, dispelAuraDuration, passiveDelay, repeatDelay, choreTravelBudget,
         errorDelay, rpgDelay, sitDelay, returnDelay, lootDelay;
-    float sightDistance, spellDistance, reactDistance, grindDistance, lootDistance, groupMemberLootDistance, groupMemberLootDistanceWithActiveMaster,
+    float sightDistance, spellDistance, reactDistance, grindDistance, lootDistance, lootDistanceMax, groupMemberLootDistance, groupMemberLootDistanceWithActiveMaster,
         gatheringDistance, groupMemberGatheringDistance, groupMemberGatheringDistanceWithActiveMaster, shootDistance,
         fleeDistance, tooCloseDistance, meleeDistance, followDistance, raidFollowDistance, wanderMinDistance, wanderMaxDistance, whisperDistance, contactDistance,
         aoeRadius, rpgDistance, targetPosRecalcDistance, farDistance, healDistance, aggroDistance, proximityDistance, maxFreeMoveDistance, freeMoveDelay, walkDistance;
@@ -124,6 +124,10 @@ public:
     uint32 lowMana, mediumMana;
 
     uint32 openGoSpell;
+    bool partyBotOnly;
+    bool IsPartyBotOnly() const { return enabled && partyBotOnly; }
+    static bool IsPartyBotBannedStrategy(const std::string& name);
+    static std::string FilterPartyBotStrategies(const std::string& strategies);
     bool randomBotAutologin;
     BotAutoLogin botAutologin;
     std::string randomBotMapsAsString;
@@ -190,6 +194,7 @@ public:
     bool logInGroupOnly, logValuesPerTick;
     uint32 actionHistorySize;   // per-bot action history ring buffer (0 = off)
     bool fleeingEnabled;
+    uint32 motionlessGiveUpSec;
     bool summonAtInnkeepersEnabled;
     std::string combatStrategies, nonCombatStrategies, reactStrategies, deadStrategies;
     std::string randomBotCombatStrategies, randomBotNonCombatStrategies, randomBotReactStrategies, randomBotDeadStrategies;
@@ -324,6 +329,8 @@ public:
 
     bool talentsInPublicNote;
     bool nonGmFreeSummon;
+    uint32 botAddCost;
+    uint32 botSummonCost;
 
     BotSelfBotLevel selfBotLevel;
     uint32 iterationsPerTick;
@@ -377,6 +384,11 @@ public:
 
     std::unordered_map <std::string, std::pair<FILE*, bool>> logFiles;
 
+    bool logArchiveOnBoot = false;
+    uint32 logArchiveKeepBoots = 10;
+    uint32 liveMapSampleSec = 5;
+    std::string bootStamp;
+
     uint32 botCheatMask = 0;
     uint32 rndBotCheatMask = 0;
 
@@ -420,6 +432,11 @@ public:
     bool openLog(std::string fileName, char const* mode = "a", bool haslog = false);
     bool isLogOpen(std::string fileName) { auto it = logFiles.find(fileName); return it != logFiles.end() && it->second.second;}
     void log(std::string fileName, const char* str, ...);
+    void logRaw(std::string fileName, const std::string& text);
+    void openBootLog(std::string fileName, const std::string& header = "");
+    std::string GetLogsDir();
+    std::string GetBootStamp();
+    std::string LocationColumns(Player* bot, bool withWmo = false);
 
     void logEvent(PlayerbotAI* ai, std::string eventName, std::string info1 = "", std::string info2 = "");
     void logEvent(PlayerbotAI* ai, std::string eventName, ObjectGuid guid, std::string info2);

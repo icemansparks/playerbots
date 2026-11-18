@@ -16,6 +16,7 @@ namespace ai
         virtual bool Execute(Event& event) override;
         virtual bool isUseful() override;
         static void ReportTravelTarget(Player* bot, Player* requester, TravelTarget* newTarget, TravelTarget* oldTarget);
+        static TravelPoint PickBestTarget(Player* bot, Player* requester, PlayerbotAI* ai, bool forced, const PlayerTravelInfo& info, PartitionedTravelList& partitionedList);
     protected:
         void setNewTarget(Player* requester, TravelTarget* newTarget, TravelTarget* oldTarget);        
 
@@ -64,7 +65,7 @@ namespace ai
     class RequestTravelTargetAction : public Action, public Qualified {
     public:
         RequestTravelTargetAction(PlayerbotAI* ai, std::string name = "request travel target") : Action(ai, name), Qualified() {}
-    private:
+    protected:
         virtual bool Execute(Event& event) override;
         virtual bool isUseful() override;
         virtual bool isAllowed() const;
@@ -75,6 +76,7 @@ namespace ai
         RequestNamedTravelTargetAction(PlayerbotAI* ai, std::string name = "request named travel target") : RequestTravelTargetAction(ai, name) {}
     private:
         virtual bool Execute(Event& event) override;
+        virtual bool isUseful() override;
         virtual bool isAllowed() const override;
     };
 
