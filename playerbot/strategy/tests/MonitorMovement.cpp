@@ -147,7 +147,14 @@ bool MonitorMovementUnderground::IsConditionMet(const std::string& monitorStr, P
 
     botpos += WorldPosition(0, 0, 0, 0.5); //Give some leeway.
 
-    if (botpos.isUnderground())
+    float groundZ = botpos.getMap(botpos.getFirstInstanceId())->GetHeight(botpos.coord_x, botpos.coord_y, botpos.coord_z + 0.5f, true);
+    float maxZ = botpos.getTerrain()->GetWaterOrGroundLevel(botpos.coord_x, botpos.coord_y, botpos.coord_z + 0.5f, groundZ, true, 1.0f);
+
+    if (maxZ <= INVALID_HEIGHT)
+        return false;
+
+    float depth = maxZ - botpos.coord_z;
+    if (depth > 10.0f)
         ctx.undergroundCount++;
     else if (ctx.undergroundCount > 0)
         ctx.undergroundCount--;
@@ -187,11 +194,19 @@ bool MonitorMovementCanNotReachNodes::IsConditionMet(const std::string& monitorS
         return false;
     }
 
-    std::vector<TravelNode*> startNodes = sTravelNodeMap.getNodes(pos);
-
-    for (uint32 i = 0; i < std::min(5,int(startNodes.size())); i++)
+    std::vector<WorldPosition> startNodePositions;
     {
-        WorldPosition nodePos = *startNodes[i]->getPosition();
+        std::shared_lock<std::shared_timed_mutex> nodeLock(sTravelNodeMap.m_nMapMtx);
+        for (TravelNode* node : sTravelNodeMap.getNodes(pos))
+        {
+            if (startNodePositions.size() >= 5)
+                break;
+            startNodePositions.push_back(*node->getPosition());
+        }
+    }
+
+    for (const WorldPosition& nodePos : startNodePositions)
+    {
         std::vector<WorldPosition> path = pos.getPathTo(nodePos, bot);
         // 3 yd, not 1: dock/entry nodes sit on pier and platform edges where the mesh thins
         // out, and pathfinding stops 1-3 yd short of them. Within 3 yd the bot can walk the

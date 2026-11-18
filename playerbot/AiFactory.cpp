@@ -527,6 +527,15 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
 #endif
     }
 
+    // STRATEGY_TYPE_HEAL comes only from the healer spec strategies (Holy and Discipline priest, Holy paladin,
+    // Restoration druid and shaman), so dps and tank specs never get save mana whatever heal actions they keep.
+    // Added before the configured strategies are applied, so "-save mana" in the config strategies turns it off.
+    auto addSaveMana = [&]()
+    {
+        if (combatEngine->ContainsStrategy(STRATEGY_TYPE_HEAL))
+            combatEngine->addStrategy("save mana");
+    };
+
     if (facade->IsRealPlayer() || sRandomPlayerbotMgr.IsFreeBot(player))
 	{
         combatEngine->addStrategy("roll");
@@ -592,10 +601,12 @@ void AiFactory::AddDefaultCombatStrategies(Player* player, PlayerbotAI* const fa
         // remove threat for now
         //engine->removeStrategy("threat");
 
+        addSaveMana();
         combatEngine->ChangeStrategy(sPlayerbotAIConfig.randomBotCombatStrategies);
     }
     else
     {
+        addSaveMana();
         combatEngine->ChangeStrategy(sPlayerbotAIConfig.combatStrategies);
     }
 
@@ -884,7 +895,8 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
                 nonCombatEngine->addStrategy("dps assist");
             }
 
-            nonCombatEngine->addStrategy("dksquest");
+            if (!sPlayerbotAIConfig.IsPartyBotOnly() || !facade->HasRealPlayerMaster())
+                nonCombatEngine->addStrategy("dksquest");
 
             break;
         }
@@ -912,12 +924,18 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
         if (master && !master->GetPlayerbotAI())
         {
             const char* wanderFollow = sPlayerbotAIConfig.useWanderAsDefaultFollowStrategy ? "wander" : "follow";
-            nonCombatEngine->addStrategies("racials", "nc", "food", wanderFollow, "default", "quest", "loot", "gather", "duel", "emote", "buff", "mount", NULL);
+            if (sPlayerbotAIConfig.IsPartyBotOnly() && facade->HasRealPlayerMaster())
+                nonCombatEngine->addStrategies("racials", "nc", "food", wanderFollow, "default", "quest", "loot", "collision", "buff", "mount", NULL);
+            else
+                nonCombatEngine->addStrategies("racials", "nc", "food", wanderFollow, "default", "quest", "loot", "gather", "duel", "emote", "buff", "mount", NULL);
         }
         else
         {
             const char* wanderFollow = sPlayerbotAIConfig.useWanderAsDefaultFollowStrategy ? "wander" : "follow";
-            nonCombatEngine->addStrategies("racials", "nc", "food", wanderFollow, "default", "quest", "loot", "gather", "duel", "emote", "buff", "mount", NULL);
+            if (sPlayerbotAIConfig.IsPartyBotOnly() && facade->HasRealPlayerMaster())
+                nonCombatEngine->addStrategies("racials", "nc", "food", wanderFollow, "default", "quest", "loot", "collision", "buff", "mount", NULL);
+            else
+                nonCombatEngine->addStrategies("racials", "nc", "food", wanderFollow, "default", "quest", "loot", "gather", "duel", "emote", "buff", "mount", NULL);
         }
     }
 
@@ -934,8 +952,10 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
     if (!player->InBattleGround() && sPlayerbotAIConfig.jumpFollow)
         nonCombatEngine->addStrategy("follow jump");
 
-    if ((facade->IsRealPlayer() || sRandomPlayerbotMgr.IsFreeBot(player)) && !player->InBattleGround())
-    {   
+    const bool partyBotMaster = sPlayerbotAIConfig.IsPartyBotOnly() && facade->HasRealPlayerMaster();
+
+    if (!partyBotMaster && (facade->IsRealPlayer() || sRandomPlayerbotMgr.IsFreeBot(player)) && !player->InBattleGround())
+    {
         Player* master = facade->GetMaster();
 
         nonCombatEngine->addStrategy("roll");
@@ -1020,7 +1040,7 @@ void AiFactory::AddDefaultNonCombatStrategies(Player* player, PlayerbotAI* const
     }
     else
     {
-        nonCombatEngine->ChangeStrategy(sPlayerbotAIConfig.nonCombatStrategies);
+        nonCombatEngine->ChangeStrategy(partyBotMaster ? PlayerbotAIConfig::FilterPartyBotStrategies(sPlayerbotAIConfig.nonCombatStrategies) : sPlayerbotAIConfig.nonCombatStrategies);
     }
 
     // Battleground switch

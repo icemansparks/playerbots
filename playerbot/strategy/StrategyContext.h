@@ -16,6 +16,7 @@
 #include "generic/StayStrategy.h"
 #include "generic/UseFoodStrategy.h"
 #include "generic/ConserveManaStrategy.h"
+#include "generic/SaveManaStrategy.h"
 #include "generic/EmoteStrategy.h"
 #include "generic/TankAssistStrategy.h"
 #include "generic/DpsAssistStrategy.h"
@@ -68,11 +69,13 @@ namespace ai
             creators["racials"] = [](PlayerbotAI* ai) { return new RacialsStrategy(ai); };
             creators["loot"] = [](PlayerbotAI* ai) { return new LootNonCombatStrategy(ai); };
             creators["gather"] = [](PlayerbotAI* ai) { return new GatherStrategy(ai); };
+            creators["fetch"] = [](PlayerbotAI* ai) { return new FetchStrategy(ai); };
             creators["roll"] = [](PlayerbotAI* ai) { return new RollStrategy(ai); };
             creators["delayed roll"] = [](PlayerbotAI* ai) { return new DelayedRollStrategy(ai); };
             creators["emote"] = [](PlayerbotAI* ai) { return new EmoteStrategy(ai); };
             creators["passive"] = [](PlayerbotAI* ai) { return new PassiveStrategy(ai); };
             creators["conserve mana"] = [](PlayerbotAI* ai) { return new ConserveManaStrategy(ai); };
+            creators["save mana"] = [](PlayerbotAI* ai) { return new SaveManaStrategy(ai); };
             creators["food"] = [](PlayerbotAI* ai) { return new UseFoodStrategy(ai); };
             creators["consumables"] = [](PlayerbotAI* ai) { return new ConsumableStrategy(ai); };
             creators["chat"] = [](PlayerbotAI* ai) { return new ChatCommandHandlerStrategy(ai); };
@@ -114,7 +117,7 @@ namespace ai
             creators["map full"] = [](PlayerbotAI* ai) { return new MapFullStrategy(ai); };
             creators["sit"] = [](PlayerbotAI* ai) { return new SitStrategy(ai); };
             creators["mark rti"] = [](PlayerbotAI* ai) { return new MarkRtiStrategy(ai); };
-            creators["ads"] = [](PlayerbotAI* ai) { return new PossibleAdsStrategy(ai); };
+            creators["ads"] = [](PlayerbotAI* ai) { return new PossibleAddsStrategy(ai); };
             creators["close"] = [](PlayerbotAI* ai) { return new MeleeCombatStrategy(ai); };
             creators["ranged"] = [](PlayerbotAI* ai) { return new RangedCombatStrategy(ai); };
             creators["behind"] = [](PlayerbotAI* ai) { return new SetBehindCombatStrategy(ai); };

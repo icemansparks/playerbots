@@ -69,7 +69,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
     bool travelTargetWorking = AI_VALUE(bool, "travel target working");
     bool travelTargetTraveling = AI_VALUE(bool, "travel target traveling");
     TravelTarget* travelTarget = AI_VALUE(TravelTarget*, "travel target");
-    bool isGrindTravelDest = travelTarget && typeid(travelTarget->GetDestination()) == typeid(GrindTravelDestination);
+    bool isGrindTravelDest = travelTarget && travelTarget->GetDestination() && typeid(*travelTarget->GetDestination()) == typeid(GrindTravelDestination);
 
     struct MemberInfo {
         Player* player;
@@ -243,7 +243,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
             else if (creature && !MaNGOS::XP::Gain(bot, creature) && urand(0, 50))
             {
                 if (ai->HasStrategy("debug grind", BotState::BOT_STATE_NON_COMBAT))
-                    if ((AI_VALUE(bool, "travel target traveling") && typeid(AI_VALUE(TravelTarget*, "travel target")->GetDestination()) != typeid(GrindTravelDestination)))
+                    if ((AI_VALUE(bool, "travel target traveling") && typeid(*AI_VALUE(TravelTarget*, "travel target")->GetDestination()) != typeid(GrindTravelDestination)))
                         ai->TellPlayer(GetMaster(), chat->formatWorldobject(unit) + " ignored (not xp and not needed for quest).");
 
                 continue;
@@ -251,11 +251,19 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
             else if (urand(0, 100) < 75)
             {
                 if (ai->HasStrategy("debug grind", BotState::BOT_STATE_NON_COMBAT))
-                    if (AI_VALUE(bool, "travel target traveling") && typeid(AI_VALUE(TravelTarget*, "travel target")->GetDestination()) != typeid(GrindTravelDestination))
+                    if (AI_VALUE(bool, "travel target traveling") && typeid(*AI_VALUE(TravelTarget*, "travel target")->GetDestination()) != typeid(GrindTravelDestination))
                         ai->TellPlayer(GetMaster(), chat->formatWorldobject(unit) + " increased distance (not needed for quest).");
 
                 newdistance += 20;
             }
+        }
+
+        if (needForQuest)
+        {
+            if (ai->HasStrategy("debug grind", BotState::BOT_STATE_NON_COMBAT))
+                ai->TellPlayer(GetMaster(), chat->formatWorldobject(unit) + " reduced distance (needed for active quest objective).");
+
+            newdistance *= 0.5f;
         }
 
         if (!bot->InBattleGround() && GetTargetingPlayerCount(unit) > assistCount)
@@ -263,7 +271,7 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
             if (ai->HasStrategy("debug grind", BotState::BOT_STATE_NON_COMBAT))
                 ai->TellPlayer(GetMaster(), chat->formatWorldobject(unit) + " increased distance (" + std::to_string(GetTargetingPlayerCount(unit)) + " bots already targeting).");
 
-            newdistance =+ GetTargetingPlayerCount(unit) * 5;
+            newdistance += GetTargetingPlayerCount(unit) * 5;
         }
 
         if (group)
@@ -275,10 +283,13 @@ Unit* GrindTargetValue::FindTargetForGrinding(int assistCount)
                 if (!member || !sServerFacade.IsAlive(member))
                     continue;
 
-                newdistance = sServerFacade.GetDistance2d(member, unit);
-                if (!result || newdistance < distance)
+                float memberDistance = sServerFacade.GetDistance2d(member, unit);
+                if (needForQuest)
+                    memberDistance *= 0.5f;
+
+                if (!result || memberDistance < distance)
                 {
-                    distance = newdistance;
+                    distance = memberDistance;
                     result = unit;
                 }
             }
