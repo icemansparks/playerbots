@@ -56,6 +56,9 @@ void TestAction::RegisterCommands()
     commands.push_back(std::make_unique<CommandSetupGiveItem>());
     commands.push_back(std::make_unique<CommandSetupEquipItem>());
     commands.push_back(std::make_unique<CommandSpawnMob>());
+    commands.push_back(std::make_unique<CommandFollowFocus>());
+    commands.push_back(std::make_unique<CommandKillFocus>());
+    commands.push_back(std::make_unique<CommandAwaitFocusCorpse>());
     commands.push_back(std::make_unique<CommandSetupClearMobs>());
     commands.push_back(std::make_unique<CommandPartySpawnBot>());
     commands.push_back(std::make_unique<CommandPartyDespawnBot>());
@@ -89,6 +92,7 @@ void TestAction::RegisterMonitors()
     monitors.push_back(std::make_unique<MonitorStateDead>());
     monitors.push_back(std::make_unique<MonitorStateTime>());
     monitors.push_back(std::make_unique<MonitorCombatHp>());
+    monitors.push_back(std::make_unique<MonitorNotInCombat>());
     monitors.push_back(std::make_unique<MonitorMovementDistance>());
     monitors.push_back(std::make_unique<MonitorNotOnMap>());
     monitors.push_back(std::make_unique<MonitorMovementUnderground>());
@@ -96,6 +100,7 @@ void TestAction::RegisterMonitors()
     monitors.push_back(std::make_unique<MonitorMovementSpeed>());
     monitors.push_back(std::make_unique<MonitorMovementSpawnDistance>());
     monitors.push_back(std::make_unique<MonitorCombatMob>());
+    monitors.push_back(std::make_unique<MonitorCombatMobHome>());
     monitors.push_back(std::make_unique<MonitorCombatDeadMobs>());
     monitors.push_back(std::make_unique<MonitorCombatPartyXp>());
     monitors.push_back(std::make_unique<MonitorCombatPartyWiped>());
@@ -104,9 +109,12 @@ void TestAction::RegisterMonitors()
     monitors.push_back(std::make_unique<MonitorStateGroupOnMap>());
     monitors.push_back(std::make_unique<MonitorStateLootGuid>());
     monitors.push_back(std::make_unique<MonitorStateStarterGearCount>());
+    monitors.push_back(std::make_unique<MonitorStateEquippedCount>());
     monitors.push_back(std::make_unique<MonitorStateEquipQuality>());
     monitors.push_back(std::make_unique<MonitorStateAreaLevelDiff>());
     monitors.push_back(std::make_unique<MonitorAiValue>());
+    monitors.push_back(std::make_unique<MonitorStateLootStackNever>());
+    monitors.push_back(std::make_unique<MonitorStateActionSpam>());
     monitors.push_back(std::make_unique<MonitorOutgoingMessage>());
     monitors.push_back(std::make_unique<MonitorQuestComplete>());
     monitors.push_back(std::make_unique<MonitorQuestRewarded>());
@@ -197,6 +205,7 @@ bool TestAction::Execute(Event& event)
 
         TellMaster(std::string("Starting test: ") + ctx.testName);
         LogToConsole(std::string("[TestAction] Bot ") + bot->GetName() + " starting test: " + ctx.testName);
+        LogRunRecord("START", "");
     }
 
     SET_AI_VALUE2(bool, "manual bool", "is running test", true);
@@ -398,6 +407,7 @@ void TestAction::ReportResult()
                           ctx.resultMessage;
     LogToConsole(logLine);
     LogToFile(logLine);
+    LogRunRecord("END", resultStr);
 
     RESET_AI_VALUE2(bool, "manual bool", "is running test");
 
@@ -439,6 +449,41 @@ void TestAction::LogToConsole(const std::string& msg)
 void TestAction::LogToFile(const std::string& msg)
 {
     sPlayerbotAIConfig.log("bot_test_results.log", msg.c_str());
+}
+
+void TestAction::LogRunRecord(const std::string& kind, const std::string& verdict)
+{
+    if (!sPlayerbotAIConfig.hasLog("bot_test_runs.csv"))
+        return;
+
+    if (kind == "END" && !ctx.testStartTime)
+        return;
+
+    auto quoted = [](std::string text)
+    {
+        for (char& c : text)
+            if (c == '"' || c == '\n' || c == '\r')
+                c = c == '"' ? '\'' : ' ';
+        return "\"" + text + "\"";
+    };
+
+    std::string travelTarget;
+    std::string lastAction;
+    if (kind == "END")
+    {
+        lastAction = ai->HandleRemoteCommand("action");
+        TravelTarget* target = AI_VALUE(TravelTarget*, "travel target");
+        if (target && target->GetDestination())
+            travelTarget = target->GetDestination()->GetTitle();
+    }
+
+    std::ostringstream out;
+    out << sPlayerbotAIConfig.GetTimestampStr() << "+00," << time(nullptr) << "," << kind << ",";
+    out << bot->GetObjectGuid().GetCounter() << "," << bot->GetName() << "," << ctx.testName << "," << verdict << ",";
+    out << (kind == "END" && ctx.testStartTime ? WorldTimer::getMSTimeDiff(ctx.testStartTime, WorldTimer::getMSTime()) : 0) << ",";
+    out << sPlayerbotAIConfig.LocationColumns(bot) << ",";
+    out << quoted(kind == "END" ? ctx.resultMessage : "") << "," << quoted(lastAction) << "," << quoted(travelTarget);
+    sPlayerbotAIConfig.logRaw("bot_test_runs.csv", out.str());
 }
 
 void TestAction::DeactivateStrategy()

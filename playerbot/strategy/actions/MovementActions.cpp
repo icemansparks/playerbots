@@ -163,10 +163,8 @@ bool MovementAction::FlyDirect(const WorldPosition &startPosition, const WorldPo
 
         if (!bot->m_movementInfo.HasMovementFlag(MOVEFLAG_FLYING))
             bot->m_movementInfo.AddMovementFlag(MOVEFLAG_FLYING);
-#ifdef MANGOSBOT_ONE
-        if (!bot->m_movementInfo.HasMovementFlag(MOVEFLAG_FLYING2))
-            bot->m_movementInfo.AddMovementFlag(MOVEFLAG_FLYING2);
-#endif
+        if (!bot->m_movementInfo.HasMovementFlag(MOVEFLAG_CAN_FLY))
+            bot->m_movementInfo.AddMovementFlag(MOVEFLAG_CAN_FLY);
         if (!bot->m_movementInfo.HasMovementFlag(MOVEFLAG_LEVITATING))
             bot->m_movementInfo.AddMovementFlag(MOVEFLAG_LEVITATING);
     }
@@ -189,10 +187,8 @@ bool MovementAction::FlyDirect(const WorldPosition &startPosition, const WorldPo
 
             if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_FLYING))
                 bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_FLYING);
-#ifdef MANGOSBOT_ONE
-            if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_FLYING2))
-                bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_FLYING2);
-#endif
+            if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_CAN_FLY))
+                bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_CAN_FLY);
             if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_LEVITATING))
                 bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_LEVITATING);
         }
@@ -469,6 +465,14 @@ bool MovementAction::UseTransport(PlayerbotAI* ai, uint32 entry, WorldPosition d
         return false;
     }
 
+    // The bot can only board on its own map, and the objects of another map
+    // belong to the thread that updates that map: do not read them.
+    if (dockPosition.mapid != bot->GetMapId())
+    {
+        ai->TellDebug(ai->GetMaster(), "Waiting for transport on different map.", "debug move");
+        return false;
+    }
+
     float minDist = 0;
 
     std::string transportName;
@@ -704,7 +708,7 @@ TravelPath MovementAction::ResolveMovePath(const WorldPosition& startPosition, c
 
     TravelPath outMovePath;
 
-    if (needsLongPath && !sTravelNodeMap.getNodes().empty() && !bot->InBattleGround())
+    if (needsLongPath && sTravelNodeMap.hasNodes() && !bot->InBattleGround())
     {
         outMovePath = sTravelNodeMap.getFullPath(startPosition, endPosition, bot); //Pathfind using nodes.
     }
@@ -897,9 +901,13 @@ void MovementAction::UpdateFlyingState(
 
         Position pos = bot->GetPosition();
 #ifdef MANGOSBOT_TWO
-        if (!bot->GetMap()->IsInLineOfSight(pos.x, pos.y, pos.z + 100.f, movePosition.getX(), movePosition.getY(), movePosition.getZ() + 100.f, bot->GetPhaseMask(), true))
+        if (!movePosition.isFinite() || !std::isfinite(pos.x) || !std::isfinite(pos.y) || !std::isfinite(pos.z))
+            WorldPosition::logNonFinite("MovementActions fly check", movePosition);
+        else if (!bot->GetMap()->IsInLineOfSight(pos.x, pos.y, pos.z + 100.f, movePosition.getX(), movePosition.getY(), movePosition.getZ() + 100.f, bot->GetPhaseMask(), true))
 #else
-        if (!bot->GetMap()->IsInLineOfSight(pos.x, pos.y, pos.z + 100.f, movePosition.getX(), movePosition.getY(), movePosition.getZ() + 100.f, true))
+        if (!movePosition.isFinite() || !std::isfinite(pos.x) || !std::isfinite(pos.y) || !std::isfinite(pos.z))
+            WorldPosition::logNonFinite("MovementActions fly check", movePosition);
+        else if (!bot->GetMap()->IsInLineOfSight(pos.x, pos.y, pos.z + 100.f, movePosition.getX(), movePosition.getY(), movePosition.getZ() + 100.f, true))
 #endif
             needFly = false;
 
@@ -948,10 +956,8 @@ void MovementAction::UpdateFlyingState(
 
         if (!bot->m_movementInfo.HasMovementFlag(MOVEFLAG_FLYING))
             bot->m_movementInfo.AddMovementFlag(MOVEFLAG_FLYING);
-#ifdef MANGOSBOT_ONE
-        if (!bot->m_movementInfo.HasMovementFlag(MOVEFLAG_FLYING2))
-            bot->m_movementInfo.AddMovementFlag(MOVEFLAG_FLYING2);
-#endif
+        if (!bot->m_movementInfo.HasMovementFlag(MOVEFLAG_CAN_FLY))
+            bot->m_movementInfo.AddMovementFlag(MOVEFLAG_CAN_FLY);
         if (!bot->m_movementInfo.HasMovementFlag(MOVEFLAG_LEVITATING))
             bot->m_movementInfo.AddMovementFlag(MOVEFLAG_LEVITATING);
     }
@@ -965,10 +971,8 @@ void MovementAction::UpdateFlyingState(
 
         if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_FLYING))
             bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_FLYING);
-#ifdef MANGOSBOT_ONE
-        if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_FLYING2))
-            bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_FLYING2);
-#endif
+        if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_CAN_FLY))
+            bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_CAN_FLY);
         if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_LEVITATING))
             bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_LEVITATING);
     }
@@ -1439,7 +1443,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
 
         if (startPosition.getMapId() != endPosition.getMapId() || totalDistance > maxDist || (startPosition.getMapId() == 609 && fabs(startPosition.getZ() - endPosition.getZ()) > 20.0f))
         {
-            if (!sTravelNodeMap.getNodes().empty() && !bot->InBattleGround())
+            if (sTravelNodeMap.hasNodes() && !bot->InBattleGround())
             {
                 movePath = sTravelNodeMap.getFullPath(startPosition, endPosition, bot);
 
@@ -1459,6 +1463,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
                     // Debug path issues - use TellDebug for debug move
                     if (ai->HasStrategy("debug move", BotState::BOT_STATE_NON_COMBAT))
                     {
+                        std::shared_lock<std::shared_timed_mutex> nodeLock(sTravelNodeMap.m_nMapMtx);
                         std::vector<TravelNode*> startNodes = sTravelNodeMap.getNodes(startPosition);
                         std::vector<TravelNode*> endNodes = sTravelNodeMap.getNodes(endPosition);
                         std::ostringstream out;
@@ -1490,7 +1495,7 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
                 else if (ai->HasStrategy("debug move", BotState::BOT_STATE_NON_COMBAT))
                 {
                     std::vector<WorldPosition> beginPath = endPosition.getPathFromPath({startPosition}, bot, 40), endPath;
-                    sTravelNodeMap.m_nMapMtx.lock_shared();
+                    std::shared_lock<std::shared_timed_mutex> nodeLock(sTravelNodeMap.m_nMapMtx);
                     TravelNodeRoute route = sTravelNodeMap.getRoute(startPosition, endPosition, beginPath, endPath, bot);
 
                     std::string routeList = "Route: ";
@@ -1504,8 +1509,6 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
                         ai->TellPlayerNoFacing(GetMaster(), routeList);
 
                     route.cleanTempNodes();
-
-                    sTravelNodeMap.m_nMapMtx.unlock_shared();
                 }
             }
             else
@@ -2120,9 +2123,13 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
             // only use in clear LOS betweek points
             Position pos = bot->GetPosition();
 #ifdef MANGOSBOT_TWO
-            if (!bot->GetMap()->IsInLineOfSight(pos.x, pos.y, pos.z + 100.f, movePosition.getX(), movePosition.getY(), movePosition.getZ() + 100.f, bot->GetPhaseMask(), true))
+            if (!movePosition.isFinite() || !std::isfinite(pos.x) || !std::isfinite(pos.y) || !std::isfinite(pos.z))
+                WorldPosition::logNonFinite("MovementActions fly check", movePosition);
+            else if (!bot->GetMap()->IsInLineOfSight(pos.x, pos.y, pos.z + 100.f, movePosition.getX(), movePosition.getY(), movePosition.getZ() + 100.f, bot->GetPhaseMask(), true))
 #else
-            if (!bot->GetMap()->IsInLineOfSight(pos.x, pos.y, pos.z + 100.f, movePosition.getX(), movePosition.getY(), movePosition.getZ() + 100.f, true))
+            if (!movePosition.isFinite() || !std::isfinite(pos.x) || !std::isfinite(pos.y) || !std::isfinite(pos.z))
+                WorldPosition::logNonFinite("MovementActions fly check", movePosition);
+            else if (!bot->GetMap()->IsInLineOfSight(pos.x, pos.y, pos.z + 100.f, movePosition.getX(), movePosition.getY(), movePosition.getZ() + 100.f, true))
 #endif
                 needFly = false;
 
@@ -2161,10 +2168,8 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
 
             if (!bot->m_movementInfo.HasMovementFlag(MOVEFLAG_FLYING))
                 bot->m_movementInfo.AddMovementFlag(MOVEFLAG_FLYING);
-#ifdef MANGOSBOT_ONE
-            if (!bot->m_movementInfo.HasMovementFlag(MOVEFLAG_FLYING2))
-                bot->m_movementInfo.AddMovementFlag(MOVEFLAG_FLYING2);
-#endif
+            if (!bot->m_movementInfo.HasMovementFlag(MOVEFLAG_CAN_FLY))
+                bot->m_movementInfo.AddMovementFlag(MOVEFLAG_CAN_FLY);
             if (!bot->m_movementInfo.HasMovementFlag(MOVEFLAG_LEVITATING))
                 bot->m_movementInfo.AddMovementFlag(MOVEFLAG_LEVITATING);
         }
@@ -2186,10 +2191,8 @@ bool MovementAction::MoveTo(uint32 mapId, float x, float y, float z, bool idle, 
 
                 if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_FLYING))
                     bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_FLYING);
-#ifdef MANGOSBOT_ONE
-                if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_FLYING2))
-                    bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_FLYING2);
-#endif
+                if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_CAN_FLY))
+                    bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_CAN_FLY);
                 if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_LEVITATING))
                     bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_LEVITATING);
             }
@@ -2495,10 +2498,8 @@ bool MovementAction::Follow(Unit* target, float distance, float angle)
 
             if (!bot->m_movementInfo.HasMovementFlag(MOVEFLAG_FLYING))
                 bot->m_movementInfo.AddMovementFlag(MOVEFLAG_FLYING);
-#ifdef MANGOSBOT_ONE
-            if (!bot->m_movementInfo.HasMovementFlag(MOVEFLAG_FLYING2))
-                bot->m_movementInfo.AddMovementFlag(MOVEFLAG_FLYING2);
-#endif
+            if (!bot->m_movementInfo.HasMovementFlag(MOVEFLAG_CAN_FLY))
+                bot->m_movementInfo.AddMovementFlag(MOVEFLAG_CAN_FLY);
             if (!bot->m_movementInfo.HasMovementFlag(MOVEFLAG_LEVITATING))
                 bot->m_movementInfo.AddMovementFlag(MOVEFLAG_LEVITATING);
         }
@@ -2513,10 +2514,8 @@ bool MovementAction::Follow(Unit* target, float distance, float angle)
 
                 if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_FLYING))
                     bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_FLYING);
-#ifdef MANGOSBOT_ONE
-                if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_FLYING2))
-                    bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_FLYING2);
-#endif
+                if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_CAN_FLY))
+                    bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_CAN_FLY);
                 if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_LEVITATING))
                     bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_LEVITATING);
 
@@ -2545,10 +2544,8 @@ bool MovementAction::Follow(Unit* target, float distance, float angle)
 
             if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_FLYING))
                 bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_FLYING);
-#ifdef MANGOSBOT_ONE
-            if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_FLYING2))
-                bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_FLYING2);
-#endif
+            if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_CAN_FLY))
+                bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_CAN_FLY);
             if (bot->m_movementInfo.HasMovementFlag(MOVEFLAG_LEVITATING))
                 bot->m_movementInfo.RemoveMovementFlag(MOVEFLAG_LEVITATING);
 
@@ -2871,12 +2868,29 @@ bool MovementAction::Flee(Unit *target)
         fleeDelay = 1;
     }
 
-    if (lastFlee && sServerFacade.isMoving(bot))
+    if (lastFlee && (now - lastFlee) <= fleeDelay)
     {
-        if ((now - lastFlee) <= fleeDelay)
-        {
+        if (sServerFacade.isMoving(bot))
             return true;
+
+        WorldPosition const fleeTo = AI_VALUE(LastMovement&, "last movement").lastFleeTo;
+        if (fleeTo)
+        {
+            WorldPosition const botPos(bot);
+            float const dx = fleeTo.getX() - botPos.getX();
+            float const dy = fleeTo.getY() - botPos.getY();
+            float const len = sqrt(dx * dx + dy * dy);
+            if (len > 5.0f)
+            {
+                float const ring = WorldPosition(bot).isOverworld() ? (ai->GetRange("flee") * 2) : ai->GetRange("flee");
+                float const nx = botPos.getX() + dx / len * ring;
+                float const ny = botPos.getY() + dy / len * ring;
+                if (MoveTo(bot->GetMapId(), nx, ny, botPos.getZ()))
+                    return true;
+            }
         }
+
+        return false;
     }
     
     const bool isHealer = ai->IsHeal(bot);
@@ -2988,30 +3002,6 @@ bool MovementAction::Flee(Unit *target)
         succeeded = MoveNear(fleeTarget);
     }
 
-    if (!ai->HasRealPlayerMaster() && !ai->IsRealPlayer(target))
-    {
-        bool fullDistance = false;
-        if (target->IsPlayer())
-            fullDistance = true;
-        if (WorldPosition(bot).isOverworld())
-            fullDistance = true;
-
-        float distance = fullDistance ? (ai->GetRange("flee") * 2) : ai->GetRange("flee");
-
-        MotionMaster* mm = bot->GetMotionMaster();
-
-        if (mm->GetCurrentMovementGeneratorType() == CHASE_MOTION_TYPE)
-        {
-            ChaseMovementGenerator* chase = (ChaseMovementGenerator*)mm->GetCurrent();
-
-            if (chase->GetCurrentTarget() == target && sServerFacade.GetChaseOffset(bot) == distance)
-                return true;
-        }
-
-        mm->MoveChase(target, distance, WorldPosition(bot).getAngleTo(target), true, false, true, false);
-        return true;
-    }
-
     // Generate a position to flee
     if(!succeeded)
     {
@@ -3041,9 +3031,7 @@ bool MovementAction::Flee(Unit *target)
 
         FleeManager manager(bot, fullDistance ? (ai->GetRange("flee") * 2) : ai->GetRange("flee"), bot->GetAngle(target) + M_PI);
         if (!manager.isUseful())
-        {
             return false;
-        }
 
         if (!urand(0, 50) && ai->HasStrategy("emote", BotState::BOT_STATE_NON_COMBAT))
         {
@@ -3056,13 +3044,31 @@ bool MovementAction::Flee(Unit *target)
         float rx, ry, rz;
         if (!manager.CalculateDestination(&rx, &ry, &rz))
         {
-            ai->TellError(GetMaster(), "Nowhere to flee");
-            return false;
+            AI_VALUE(LastMovement&, "last movement").lastFlee = time(0);
+
+            if (ai->HasRealPlayerMaster() || ai->IsRealPlayer(target))
+                return false;
+
+            float distance = fullDistance ? (ai->GetRange("flee") * 2) : ai->GetRange("flee");
+
+            MotionMaster* mm = bot->GetMotionMaster();
+
+            if (mm->GetCurrentMovementGeneratorType() == CHASE_MOTION_TYPE)
+            {
+                ChaseMovementGenerator* chase = (ChaseMovementGenerator*)mm->GetCurrent();
+
+                if (chase->GetCurrentTarget() == target && sServerFacade.GetChaseOffset(bot) == distance)
+                    return true;
+            }
+
+            mm->MoveChase(target, distance, WorldPosition(bot).getAngleTo(target), true, false, true, false);
+            return true;
         }
 
         if(MoveTo(target->GetMapId(), rx, ry, rz))
         {
             AI_VALUE(LastMovement&, "last movement").lastFlee = time(0);
+            AI_VALUE(LastMovement&, "last movement").lastFleeTo = WorldPosition(target->GetMapId(), rx, ry, rz);
             succeeded = true;
         }
     }
